@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"runtime"
 	"strings"
 	"unicode"
 
@@ -52,8 +53,8 @@ type Input struct {
 
 type HotkeyData struct {
 	gorm.Model
-	Text   string
-	Hotkey string `gorm:"uniqueIndex"`
+	HotkeyText string
+	Hotkey     string `gorm:"uniqueIndex"`
 }
 
 type HotkeyObj struct {
@@ -124,9 +125,9 @@ func Hotkey() *HotkeyObj {
 	if err != nil {
 		notification("打开数据文件失败，请检查！")
 	}
-	db.Table("hotkey").AutoMigrate(&HotkeyData{})
+	db.Table("autoTyper").AutoMigrate(&HotkeyData{})
 
-	return &HotkeyObj{db: db.Table("hotkey")}
+	return &HotkeyObj{db: db.Table("autoTyper")}
 }
 
 func (h HotkeyObj) ListData() binding.StringList {
@@ -158,7 +159,7 @@ func (h HotkeyObj) Create(data *HotkeyData) error {
 }
 
 func (h HotkeyObj) Update(id uint, data HotkeyData) error {
-	if err := h.db.Exec("UPDATE hotkey SET text=?, hotkey=? WHERE id=?", data.Text, data.Hotkey, id).Error; err != nil {
+	if err := h.db.Exec("UPDATE hotkey SET text=?, hotkey=? WHERE id=?", data.HotkeyText, data.Hotkey, id).Error; err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return errors.New("热键已被使用！")
 		}
@@ -233,6 +234,7 @@ func openWindowInput() {
 					}
 					robotgo.KeyTap("enter")
 					w.Close()
+					specialModeShow = false
 				}
 			}, w)
 			d.Show()
@@ -259,6 +261,11 @@ func registerWindowInputHotkey() {
 		hk := hotkey.New([]hotkey.Modifier{}, hotkey.KeyF10)
 		if err := hk.Register(); err != nil {
 			notification("注册热键失败！")
+		}
+
+		if runtime.GOOS == "darwin" {
+			robotgo.KeyTap("1")
+			robotgo.KeyTap("backspace")
 		}
 
 		for range hk.Keydown() {
@@ -292,7 +299,7 @@ func registerHotkey(data HotkeyData) {
 			registerHotkeyList[data.Hotkey] = hk
 
 			for range hk.Keydown() {
-				robotgo.TypeStr(data.Text)
+				robotgo.TypeStr(data.HotkeyText)
 			}
 
 			hk.Unregister()
@@ -332,7 +339,7 @@ func registerAllHotkey() {
 				registerHotkeyList[v.Hotkey] = hk
 
 				for range hk.Keydown() {
-					robotgo.TypeStr(v.Text)
+					robotgo.TypeStr(v.HotkeyText)
 				}
 			}
 
@@ -369,7 +376,7 @@ func main() {
 				addShow = false
 			},
 			OnSubmit: func() {
-				d := HotkeyData{Text: textInput.Text, Hotkey: hotkeyInput.Text}
+				d := HotkeyData{HotkeyText: textInput.Text, Hotkey: hotkeyInput.Text}
 				if err := h.Create(&d); err != nil {
 					showErrorMessage(err.Error(), mainWindow)
 				} else {
@@ -402,7 +409,7 @@ func main() {
 		w.SetFixedSize(true)
 
 		textInput := widget.NewMultiLineEntry()
-		textInput.SetText(item.Text)
+		textInput.SetText(item.HotkeyText)
 		hotkeyInput := NewInput()
 		hotkeyInput.SetText(item.Hotkey)
 
@@ -416,15 +423,15 @@ func main() {
 				editShow = false
 			},
 			OnSubmit: func() {
-				if item.Text == textInput.Text && item.Hotkey == hotkeyInput.Text {
+				if item.HotkeyText == textInput.Text && item.Hotkey == hotkeyInput.Text {
 
 				} else {
-					if err := h.Update(item.ID, HotkeyData{Text: textInput.Text, Hotkey: hotkeyInput.Text}); err != nil {
+					if err := h.Update(item.ID, HotkeyData{HotkeyText: textInput.Text, Hotkey: hotkeyInput.Text}); err != nil {
 						showErrorMessage(err.Error(), mainWindow)
 					} else {
 						h.Rload(dataList)
 						unRegisterHotkey(hotkeyItem)
-						hotkeyItem.Text = textInput.Text
+						hotkeyItem.HotkeyText = textInput.Text
 						hotkeyItem.Hotkey = hotkeyInput.Text
 						registerHotkey(hotkeyItem)
 						showInformationMessage("更新成功", mainWindow)
@@ -462,7 +469,7 @@ func main() {
 			json.Unmarshal([]byte(item), &hotkeyItem)
 
 			text := o.(*fyne.Container).Objects[0].(*widget.Label)
-			text.SetText(hotkeyItem.Text)
+			text.SetText(hotkeyItem.HotkeyText)
 
 			text1 := o.(*fyne.Container).Objects[1].(*canvas.Text)
 			text1.Text = hotkeyItem.Hotkey

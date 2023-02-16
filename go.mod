@@ -3,16 +3,16 @@ module autoTyper
 go 1.19
 
 require (
-	fyne.io/fyne/v2 v2.3.0
+	fyne.io/fyne/v2 v2.3.1
 	github.com/go-vgo/robotgo v0.100.10
-	golang.design/x/hotkey v0.4.0
-	golang.org/x/sys v0.3.0
-	gorm.io/driver/sqlite v1.4.3
-	gorm.io/gorm v1.24.2
+	golang.design/x/hotkey v0.4.1
+	golang.org/x/sys v0.5.0
+	gorm.io/driver/sqlite v1.4.4
+	gorm.io/gorm v1.24.5
 )
 
 require (
-	fyne.io/systray v1.10.1-0.20221115204952-d16a6177e6f1 // indirect
+	fyne.io/systray v1.10.1-0.20230207085535-4a244dbb9d03 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/benoitkugler/textlayout v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
