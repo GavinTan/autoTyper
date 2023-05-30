@@ -11,5 +11,6 @@
 go install github.com/gavintan/fyne-cross@latest
 
 fyne-cross windows
+fyne-cross darwin -app-id com.tw.autoTyper  -app-version 1.0.2
 ~~~
 
