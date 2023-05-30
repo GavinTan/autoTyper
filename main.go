@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -44,6 +45,8 @@ var (
 	editShow           bool
 	editWindow         fyne.Window
 	registerHotkeyList = map[string]*hotkey.Hotkey{}
+
+	tableName = "autoTyper"
 )
 
 type Input struct {
@@ -125,16 +128,14 @@ func Hotkey() *HotkeyObj {
 	if err != nil {
 		notification("打开数据文件失败，请检查！")
 	}
-	db.Table("autoTyper").AutoMigrate(&HotkeyData{})
+	db.Table(tableName).AutoMigrate(&HotkeyData{})
 
-	return &HotkeyObj{db: db.Table("autoTyper")}
+	return &HotkeyObj{db: db.Table(tableName)}
 }
 
 func (h HotkeyObj) ListData() binding.StringList {
-	var data []HotkeyData
-	h.db.Find(&data)
 	dataList := binding.NewStringList()
-	for _, item := range data {
+	for _, item := range h.All() {
 		d, _ := json.Marshal(item)
 		dataList.Append(string(d))
 	}
@@ -159,7 +160,7 @@ func (h HotkeyObj) Create(data *HotkeyData) error {
 }
 
 func (h HotkeyObj) Update(id uint, data HotkeyData) error {
-	if err := h.db.Exec("UPDATE hotkey SET text=?, hotkey=? WHERE id=?", data.HotkeyText, data.Hotkey, id).Error; err != nil {
+	if err := h.db.WithContext(context.Background()).Model(&HotkeyData{}).Where("id = ?", id).Updates(data).Error; err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return errors.New("热键已被使用！")
 		}
@@ -169,7 +170,7 @@ func (h HotkeyObj) Update(id uint, data HotkeyData) error {
 }
 
 func (h HotkeyObj) Delete(id uint) {
-	h.db.Exec("DELETE FROM hotkey WHERE id=?", id)
+	h.db.WithContext(context.Background()).Unscoped().Delete(&HotkeyData{}, id)
 }
 
 func (h HotkeyObj) Rload(dataList binding.StringList) {
@@ -250,6 +251,7 @@ func openWindowInput() {
 
 	w.SetContent(form)
 	w.Resize(fyne.NewSize(360, 160))
+	w.CenterOnScreen()
 	w.Show()
 
 	specialModeShow = true
@@ -581,6 +583,7 @@ func main() {
 	registerAllHotkey()
 
 	mainWindow.Resize(fyne.NewSize(500, 400))
+	mainWindow.CenterOnScreen()
 
 	flag.BoolVar(&autostart, "autostart", false, "Run without window.")
 	flag.Parse()

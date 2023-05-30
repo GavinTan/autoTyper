@@ -26,6 +26,17 @@ var (
 	}
 
 	Keys = map[string]hotkey.Key{
+		"`":  0xC0,
+		"/":  0xBF,
+		".":  0xBE,
+		"-":  0xBD,
+		",":  0xBC,
+		"+":  0xBB,
+		";":  0xBA,
+		"[":  0xDB,
+		"\\": 0xDC,
+		"]":  0xDD,
+
 		"Space": 0x20,
 		"0":     0x30,
 		"1":     0x31,
