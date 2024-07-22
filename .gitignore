@@ -1,4 +1,10 @@
-fyne-cross/
-Icon.png
-
 .idea/
+dist/
+release/
+fyne-cross/
+
+
+*.exe
+*.app
+*.dmg
+

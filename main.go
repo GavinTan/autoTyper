@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"image/color"
 	"net/url"
 	"os"
 	"path"
 	"runtime"
 	"strings"
+	"time"
 	"unicode"
 
 	"fyne.io/fyne/v2"
@@ -24,6 +26,8 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/gavintan/autoTyper/config"
+	"github.com/gavintan/autoTyper/ipc"
 	"github.com/go-vgo/robotgo"
 	"golang.design/x/hotkey"
 
@@ -32,42 +36,35 @@ import (
 )
 
 var (
+	h                  *Hotkey
 	list               *widget.List
 	hotkeyItem         HotkeyData
 	inputKeys          []string
 	firstKey           string
 	lastKey            string
 	autostart          bool
-	specialModeShow    bool
-	specialModeWindow  fyne.Window
-	addShow            bool
-	addWindow          fyne.Window
-	editShow           bool
-	editWindow         fyne.Window
+	inputWindow        fyne.Window
 	registerHotkeyList = map[string]*hotkey.Hotkey{}
-
-	tableName = "autoTyper"
 )
 
 type Input struct {
 	widget.Entry
-	Wrapping fyne.TextWrap
+}
+
+type MultiLineInput struct {
+	widget.Entry
 }
 
 type HotkeyData struct {
-	gorm.Model
+	ID         uint `gorm:"primarykey"`
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 	HotkeyText string
 	Hotkey     string `gorm:"uniqueIndex"`
 }
 
-type HotkeyObj struct {
+type Hotkey struct {
 	db *gorm.DB
-}
-
-func NewInput() *Input {
-	e := &Input{Wrapping: fyne.TextTruncate}
-	e.ExtendBaseWidget(e)
-	return e
 }
 
 func (e *Input) KeyDown(key *fyne.KeyEvent) {
@@ -118,9 +115,34 @@ func (e *Input) KeyUp(key *fyne.KeyEvent) {
 func (e *Input) TypedRune(r rune) {
 }
 
-func Hotkey() *HotkeyObj {
+func (me *MultiLineInput) TypedKey(key *fyne.KeyEvent) {
+	// 禁止换行
+	keyName := string(key.Name)
+	if strings.Contains(keyName, "Enter") || strings.Contains(keyName, "Return") {
+		return
+	}
+
+	me.Entry.TypedKey(key)
+}
+
+func NewInput() *Input {
+	e := &Input{}
+	e.Wrapping = fyne.TextTruncate
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+func NewMultiLineInput() *MultiLineInput {
+	e := &MultiLineInput{}
+	e.Wrapping = fyne.TextWrapBreak
+	e.MultiLine = true
+	e.ExtendBaseWidget(e)
+	return e
+}
+
+func NewHotkey() *Hotkey {
 	userConfigDir, _ := os.UserConfigDir()
-	dataPath := path.Join(userConfigDir, "autoTyper")
+	dataPath := path.Join(userConfigDir, config.Name)
 	dbPath := path.Join(dataPath, "data.db")
 	os.MkdirAll(dataPath, os.ModePerm)
 
@@ -128,12 +150,12 @@ func Hotkey() *HotkeyObj {
 	if err != nil {
 		notification("打开数据文件失败，请检查！")
 	}
-	db.Table(tableName).AutoMigrate(&HotkeyData{})
+	db.Table(config.Name).AutoMigrate(&HotkeyData{})
 
-	return &HotkeyObj{db: db.Table(tableName)}
+	return &Hotkey{db: db.Table(config.Name).WithContext(context.Background())}
 }
 
-func (h HotkeyObj) ListData() binding.StringList {
+func (h Hotkey) ListData() binding.StringList {
 	dataList := binding.NewStringList()
 	for _, item := range h.All() {
 		d, _ := json.Marshal(item)
@@ -143,13 +165,13 @@ func (h HotkeyObj) ListData() binding.StringList {
 	return dataList
 }
 
-func (h HotkeyObj) All() []HotkeyData {
+func (h Hotkey) All() []HotkeyData {
 	var data []HotkeyData
 	h.db.Find(&data)
 	return data
 }
 
-func (h HotkeyObj) Create(data *HotkeyData) error {
+func (h Hotkey) Create(data *HotkeyData) error {
 	if err := h.db.Create(&data).Error; err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return errors.New("热键已被使用！")
@@ -159,8 +181,8 @@ func (h HotkeyObj) Create(data *HotkeyData) error {
 	return nil
 }
 
-func (h HotkeyObj) Update(id uint, data HotkeyData) error {
-	if err := h.db.WithContext(context.Background()).Model(&HotkeyData{}).Where("id = ?", id).Updates(data).Error; err != nil {
+func (h Hotkey) Update(data HotkeyData) error {
+	if err := h.db.Model(&data).Updates(data).Error; err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return errors.New("热键已被使用！")
 		}
@@ -169,17 +191,17 @@ func (h HotkeyObj) Update(id uint, data HotkeyData) error {
 	return nil
 }
 
-func (h HotkeyObj) Delete(id uint) {
-	h.db.WithContext(context.Background()).Unscoped().Delete(&HotkeyData{}, id)
+func (h Hotkey) Delete(id uint) {
+	h.db.Unscoped().Delete(&HotkeyData{}, id)
 }
 
-func (h HotkeyObj) Rload(dataList binding.StringList) {
+func (h Hotkey) Rload(dataList binding.StringList) {
 	newData, _ := h.ListData().Get()
 	dataList.Set(newData)
 	list.Refresh()
 }
 
-func (h HotkeyObj) Close() {
+func (h Hotkey) Close() {
 	if db, err := h.db.DB(); err == nil {
 		db.Close()
 	}
@@ -204,9 +226,9 @@ func notification(message string) {
 	})
 }
 
-func openWindowInput() {
-	w := fyne.CurrentApp().NewWindow("模拟按键输入模式")
-	w.SetFixedSize(true)
+func openInputWindow() {
+	inputWindow = fyne.CurrentApp().NewWindow("模拟按键输入模式")
+	inputWindow.SetFixedSize(true)
 
 	textInput := widget.NewMultiLineEntry()
 	textInput.Validator = validation.NewRegexp(`\S`, "必填")
@@ -216,13 +238,13 @@ func openWindowInput() {
 			{Text: "文本", Widget: textInput, HintText: "不支持中文以及非键盘上的符号"},
 		},
 		OnCancel: func() {
-			w.Close()
-			specialModeShow = false
+			inputWindow.Close()
+			inputWindow = nil
 		},
 		OnSubmit: func() {
 			d := dialog.NewConfirm("Confirmation", "请按Yes后3秒激活接收窗口", func(b bool) {
 				if b {
-					w.Hide()
+					inputWindow.Hide()
 					robotgo.Sleep(3)
 					shiftStr := "~!@#$%^&*()_+|{}:\"<>?"
 					for _, str := range textInput.Text {
@@ -234,47 +256,44 @@ func openWindowInput() {
 						}
 					}
 					robotgo.KeyTap("enter")
-					w.Close()
-					specialModeShow = false
+					inputWindow.Close()
+					inputWindow = nil
 				}
-			}, w)
+			}, inputWindow)
 			d.Show()
 		},
 		SubmitText: "提交",
 		CancelText: "取消",
 	}
 
-	w.SetCloseIntercept(func() {
-		w.Close()
-		specialModeShow = false
+	inputWindow.SetCloseIntercept(func() {
+		inputWindow.Close()
+		inputWindow = nil
 	})
 
-	w.SetContent(form)
-	w.Resize(fyne.NewSize(360, 160))
-	w.CenterOnScreen()
-	w.Show()
-
-	specialModeShow = true
-	specialModeWindow = w
+	inputWindow.SetContent(form)
+	inputWindow.Resize(fyne.NewSize(360, 160))
+	inputWindow.CenterOnScreen()
+	inputWindow.Show()
 }
 
 func registerWindowInputHotkey() {
+	// 解决darwin下robotgo panic ？
+	if runtime.GOOS == "darwin" {
+		robotgo.KeyTap("1")
+	}
+
 	go func() {
 		hk := hotkey.New([]hotkey.Modifier{}, hotkey.KeyF10)
 		if err := hk.Register(); err != nil {
-			notification("注册热键失败！")
-		}
-
-		if runtime.GOOS == "darwin" {
-			robotgo.KeyTap("1")
-			robotgo.KeyTap("backspace")
+			notification("注册「F10」热键失败！")
 		}
 
 		for range hk.Keydown() {
-			if specialModeShow {
-				specialModeWindow.Show()
+			if inputWindow != nil {
+				inputWindow.Show()
 			} else {
-				openWindowInput()
+				openInputWindow()
 			}
 		}
 	}()
@@ -295,7 +314,7 @@ func registerHotkey(data HotkeyData) {
 
 			hk := hotkey.New(mk, Keys[k[len(k)-1]])
 			if err := hk.Register(); err != nil {
-				notification("注册热键失败！")
+				notification(fmt.Sprintf("注册「%s」热键失败！", data.Hotkey))
 			}
 
 			registerHotkeyList[data.Hotkey] = hk
@@ -318,48 +337,60 @@ func unRegisterHotkey(data HotkeyData) {
 	}()
 }
 
-func registerAllHotkey() {
-	for _, v := range Hotkey().All() {
-		v := v
-		k := strings.Split(v.Hotkey, " + ")
+func registerAllHotkey(data []HotkeyData) {
+	for _, v := range data {
+		registerHotkey(v)
+	}
+}
 
-		go func() {
-			if len(k) > 1 {
-				var mk []hotkey.Modifier
+func unRegisterAllHotkey() {
+	for _, v := range h.All() {
+		unRegisterHotkey(v)
+	}
+}
 
-				for i, v := range k {
-					if i+1 != len(k) {
-						mk = append(mk, hotkey.Modifier(Modkeys[v]))
-					}
-				}
-
-				hk := hotkey.New(mk, Keys[k[len(k)-1]])
-				if err := hk.Register(); err != nil {
-					notification("注册热键失败！")
-				}
-
-				registerHotkeyList[v.Hotkey] = hk
-
-				for range hk.Keydown() {
-					robotgo.TypeStr(v.HotkeyText)
-				}
-			}
-
-		}()
+func init() {
+	c, _ := ipc.Connect()
+	if c != nil {
+		c.Show()
+		os.Exit(0)
 	}
 }
 
 func main() {
-	title := "文本自动输入器"
-	a := app.NewWithID(title)
-	a.Settings().SetTheme(&mainTheme{})
+	a := app.NewWithID(config.Title)
 	a.SetIcon(resourceIconPng)
-	mainWindow := a.NewWindow(title)
+	mainWindow := a.NewWindow(config.Title)
 
-	h := Hotkey()
+	go ipc.NewServer(mainWindow)
+
+	h = NewHotkey()
 	dataList := h.ListData()
 
-	openAddWindow := func() {
+	openAddDialog := func() {
+		d := NewDialog("添加", HotkeyData{})
+		pop := widget.NewModalPopUp(d, mainWindow.Canvas())
+
+		d.OnSubmit = func() {
+			d := HotkeyData{HotkeyText: d.textInput.Text, Hotkey: d.hotkeyInput.Text}
+			if err := h.Create(&d); err != nil {
+				showErrorMessage(err.Error(), mainWindow)
+			} else {
+				dj, _ := json.Marshal(&d)
+				dataList.Append(string(dj))
+				list.Refresh()
+				registerHotkey(d)
+				pop.Hide()
+			}
+		}
+
+		d.OnCancel = func() {
+			pop.Hide()
+		}
+
+		pop.Resize(fyne.NewSize(360, 150))
+		pop.Show()
+
 		w := a.NewWindow("添加")
 		w.SetFixedSize(true)
 
@@ -367,114 +398,54 @@ func main() {
 		textInput.Validator = validation.NewRegexp(`\S`, "必填")
 		hotkeyInput := NewInput()
 		hotkeyInput.Validator = validation.NewRegexp(`\S`, "必填")
-
-		form := &widget.Form{
-			Items: []*widget.FormItem{
-				widget.NewFormItem("文本", textInput),
-				widget.NewFormItem("热键", hotkeyInput),
-			},
-			OnCancel: func() {
-				w.Close()
-				addShow = false
-			},
-			OnSubmit: func() {
-				d := HotkeyData{HotkeyText: textInput.Text, Hotkey: hotkeyInput.Text}
-				if err := h.Create(&d); err != nil {
-					showErrorMessage(err.Error(), mainWindow)
-				} else {
-					dj, _ := json.Marshal(&d)
-					dataList.Append(string(dj))
-					registerHotkey(d)
-				}
-
-				w.Close()
-				addShow = false
-			},
-			SubmitText: "提交",
-			CancelText: "取消",
-		}
-
-		w.SetCloseIntercept(func() {
-			w.Close()
-			addShow = false
-		})
-
-		w.SetContent(form)
-		w.Resize(fyne.NewSize(360, 150))
-		w.Show()
-		addShow = true
-		addWindow = w
 	}
 
-	openEditWindow := func(item HotkeyData) {
-		w := a.NewWindow("编辑")
-		w.SetFixedSize(true)
+	openEditDialog := func(item HotkeyData) {
+		d := NewDialog("编辑", item)
+		pop := widget.NewModalPopUp(d, mainWindow.Canvas())
 
-		textInput := widget.NewMultiLineEntry()
-		textInput.SetText(item.HotkeyText)
-		hotkeyInput := NewInput()
-		hotkeyInput.SetText(item.Hotkey)
-
-		form := &widget.Form{
-			Items: []*widget.FormItem{
-				{Text: "文本", Widget: textInput},
-				{Text: "热键", Widget: hotkeyInput},
-			},
-			OnCancel: func() {
-				w.Close()
-				editShow = false
-			},
-			OnSubmit: func() {
-				if item.HotkeyText == textInput.Text && item.Hotkey == hotkeyInput.Text {
-
+		d.OnSubmit = func() {
+			if item.HotkeyText == d.textInput.Text && item.Hotkey == d.hotkeyInput.Text {
+			} else {
+				if err := h.Update(HotkeyData{ID: item.ID, HotkeyText: d.textInput.Text, Hotkey: d.hotkeyInput.Text}); err != nil {
+					showErrorMessage(err.Error(), mainWindow)
 				} else {
-					if err := h.Update(item.ID, HotkeyData{HotkeyText: textInput.Text, Hotkey: hotkeyInput.Text}); err != nil {
-						showErrorMessage(err.Error(), mainWindow)
-					} else {
-						h.Rload(dataList)
-						unRegisterHotkey(hotkeyItem)
-						hotkeyItem.HotkeyText = textInput.Text
-						hotkeyItem.Hotkey = hotkeyInput.Text
-						registerHotkey(hotkeyItem)
-						showInformationMessage("更新成功", mainWindow)
-					}
+					h.Rload(dataList)
+					unRegisterHotkey(hotkeyItem)
+					hotkeyItem.HotkeyText = d.textInput.Text
+					hotkeyItem.Hotkey = d.hotkeyInput.Text
+					registerHotkey(hotkeyItem)
+					pop.Hide()
+					showInformationMessage("更新成功", mainWindow)
 				}
-
-				w.Close()
-				editShow = false
-			},
-			SubmitText: "提交",
-			CancelText: "取消",
+			}
 		}
 
-		w.SetCloseIntercept(func() {
-			w.Close()
-			editShow = false
-		})
+		d.OnCancel = func() {
+			pop.Hide()
+		}
 
-		w.SetContent(form)
-		w.Resize(fyne.NewSize(360, 150))
-		w.Show()
-		editShow = true
-		editWindow = w
+		pop.Resize(fyne.NewSize(360, 150))
+		pop.Show()
 	}
 
 	list = widget.NewListWithData(
 		dataList,
 		func() fyne.CanvasObject {
-			return container.NewBorder(nil, nil, widget.NewLabel(""), canvas.NewText("", color.RGBA{204, 204, 204, 255}))
+			return container.NewGridWithRows(1, widget.NewLabel(""), canvas.NewText("", color.RGBA{204, 204, 204, 255}))
 		},
 		func(i binding.DataItem, o fyne.CanvasObject) {
 			var hotkeyItem HotkeyData
 			item, _ := i.(binding.String).Get()
-
 			json.Unmarshal([]byte(item), &hotkeyItem)
 
-			text := o.(*fyne.Container).Objects[0].(*widget.Label)
-			text.SetText(hotkeyItem.HotkeyText)
+			l := o.(*fyne.Container).Objects[0].(*widget.Label)
+			l.SetText(hotkeyItem.HotkeyText)
+			l.Truncation = fyne.TextTruncateEllipsis
 
-			text1 := o.(*fyne.Container).Objects[1].(*canvas.Text)
-			text1.Text = hotkeyItem.Hotkey
+			t := o.(*fyne.Container).Objects[1].(*canvas.Text)
+			t.Text = hotkeyItem.Hotkey + "  "
+			t.Alignment = fyne.TextAlignTrailing
 		})
 
 	list.OnSelected = func(id widget.ListItemID) {
@@ -483,19 +454,11 @@ func main() {
 	}
 
 	addBtn := widget.NewButtonWithIcon("添加", theme.ContentAddIcon(), func() {
-		if addShow {
-			addWindow.Show()
-		} else {
-			openAddWindow()
-		}
+		openAddDialog()
 	})
 	editBtn := widget.NewButtonWithIcon("编辑", theme.DocumentCreateIcon(), func() {
 		if hotkeyItem.Hotkey != "" {
-			if editShow {
-				editWindow.Show()
-			} else {
-				openEditWindow(hotkeyItem)
-			}
+			openEditDialog(hotkeyItem)
 		} else {
 			d := dialog.NewError(errors.New("请选择！"), mainWindow)
 			d.Resize(fyne.NewSize(200, 150))
@@ -525,11 +488,11 @@ func main() {
 	content := container.NewBorder(nil, container.NewGridWithColumns(3, addBtn, editBtn, delBtn), nil, nil, list)
 
 	f10 := &desktop.CustomShortcut{KeyName: fyne.KeyF10}
-	toolsItem := fyne.NewMenuItem("特殊模式", func() {
-		if specialModeShow {
-			specialModeWindow.Show()
+	toolsItem := fyne.NewMenuItem("模拟按键", func() {
+		if inputWindow != nil {
+			inputWindow.Show()
 		} else {
-			openWindowInput()
+			openInputWindow()
 		}
 	})
 	toolsItem.Shortcut = f10
@@ -580,7 +543,7 @@ func main() {
 	mainWindow.SetContent(content)
 
 	registerWindowInputHotkey()
-	registerAllHotkey()
+	registerAllHotkey(h.All())
 
 	mainWindow.Resize(fyne.NewSize(500, 400))
 	mainWindow.CenterOnScreen()
