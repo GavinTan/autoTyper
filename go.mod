@@ -3,7 +3,7 @@ module github.com/gavintan/autoTyper
 go 1.22
 
 require (
-	fyne.io/fyne/v2 v2.5.0
+	fyne.io/fyne/v2 v2.5.1
 	github.com/Microsoft/go-winio v0.6.2
 	github.com/go-vgo/robotgo v1.0.0-beta3
 	golang.design/x/hotkey v0.4.1
@@ -24,7 +24,7 @@ require (
 	github.com/go-gl/gl v0.0.0-20211210172815-726fda9656d6 // indirect
 	github.com/go-gl/glfw/v3.3/glfw v0.0.0-20240506104042-037f3cc74f2a // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
-	github.com/go-text/render v0.1.0 // indirect
+	github.com/go-text/render v0.1.1-0.20240418202334-dd62631dae9b // indirect
 	github.com/go-text/typesetting v0.1.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gopherjs/gopherjs v1.17.2 // indirect
@@ -41,7 +41,7 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/robotn/xgb v0.0.0-20190912153532-2cb92d044934 // indirect
 	github.com/robotn/xgbutil v0.0.0-20190912154524-c861d6f87770 // indirect
-	github.com/rymdport/portal v0.2.2 // indirect
+	github.com/rymdport/portal v0.2.6 // indirect
 	github.com/shirou/gopsutil/v3 v3.21.12 // indirect
 	github.com/srwiley/oksvg v0.0.0-20221011165216-be6e8873101c // indirect
 	github.com/srwiley/rasterx v0.0.0-20220730225603-2ab79fcdd4ef // indirect
