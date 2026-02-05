@@ -24,7 +24,9 @@ func NewServer(fw fyne.Window) {
 		})
 
 		m.HandleFunc(ShowPath, func(w http.ResponseWriter, r *http.Request) {
-			fw.Show()
+			fyne.DoAndWait(func() {
+				fw.Show()
+			})
 		})
 
 		http.Serve(ln, m)

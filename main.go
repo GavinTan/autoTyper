@@ -290,11 +290,13 @@ func registerWindowInputHotkey() {
 		}
 
 		for range hk.Keydown() {
-			if inputWindow != nil {
-				inputWindow.Show()
-			} else {
-				openInputWindow()
-			}
+			fyne.Do(func() {
+				if inputWindow != nil {
+					inputWindow.Show()
+				} else {
+					openInputWindow()
+				}
+			})
 		}
 	}()
 }
@@ -320,7 +322,7 @@ func registerHotkey(data HotkeyData) {
 			registerHotkeyList[data.Hotkey] = hk
 
 			for range hk.Keydown() {
-				robotgo.TypeStr(data.HotkeyText)
+				robotgo.Type(data.HotkeyText)
 			}
 
 			hk.Unregister()
@@ -529,11 +531,12 @@ func main() {
 
 	if desk, ok := a.(desktop.App); ok {
 		m := fyne.NewMenu("autoTyper",
-			fyne.NewMenuItem("Show", func() {
+			fyne.NewMenuItem("显示", func() {
 				mainWindow.Show()
 			}))
 
 		desk.SetSystemTrayMenu(m)
+		desk.SetSystemTrayWindow(mainWindow)
 	}
 
 	mainWindow.SetCloseIntercept(func() {
