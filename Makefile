@@ -1,5 +1,5 @@
 app_name = autoTyper
-app_version = 2.0.2
+app_version = 2.0.3
 app_id = com.tw.autoTyper
 
 
@@ -8,10 +8,10 @@ build:
 
 
 darwin:
-	fyne-cross darwin -arch amd64 -app-id $(app_id) -app-version $(app_version) -icon ./icon.png -name $(app_name)
+	fyne-cross darwin -arch amd64 -app-id $(app_id) -app-version $(app_version) -icon ./icon.png -name $(app_name) -macosx-version-min 12
 
 darwin_arm:
-	fyne-cross darwin -arch arm64 -app-id $(app_id) -app-version $(app_version) -icon ./icon.png -name $(app_name)
+	fyne-cross darwin -arch arm64 -app-id $(app_id) -app-version $(app_version) -icon ./icon.png -name $(app_name) -macosx-version-min 12
 
 create_dmg:
 	mkdir tmp && mv ./release/$(app_name).app ./tmp/
@@ -38,5 +38,5 @@ dist:
 	make darwin
 	make windows
 	mkdir release
-	mv ./fyne-cross/bin/windows-amd64/$(app_name) ./release/$(app_name)-$(app_version)-amd64.exe
+	mv ./fyne-cross/bin/windows-amd64/$(app_name).exe ./release/$(app_name)-$(app_version)-amd64.exe
 	mv ./fyne-cross/dist/darwin-amd64/$(app_name).app ./release/
