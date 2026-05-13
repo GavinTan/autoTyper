@@ -1,5 +1,5 @@
 app_name = autoTyper
-app_version = 2.0.3
+app_version = 2.0.4
 app_id = com.tw.autoTyper
 
 

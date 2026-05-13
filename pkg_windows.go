@@ -5,8 +5,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 
+	"github.com/gavintan/autoTyper/config"
 	"golang.design/x/hotkey"
 	"golang.org/x/sys/windows/registry"
 )
@@ -125,26 +128,91 @@ func RegBase() registry.Key {
 
 func AutoStart(b bool) {
 	exePath, _ := os.Executable()
-	_, fn := filepath.Split(exePath)
+
 	k := RegBase()
 	defer k.Close()
 
 	if b {
-		k.SetStringValue(fn, fmt.Sprintf("%s -autostart", exePath))
+		if !addSchtasks() {
+			k.SetStringValue(config.Name, fmt.Sprintf("%s -autostart", exePath))
+		}
 	} else {
-		k.DeleteValue(fn)
+		if !deleteSchtasks() {
+			k.DeleteValue(config.Name)
+		}
 	}
 }
 
 func GetAutoStartStatus() bool {
-	exePath, _ := os.Executable()
-	_, fn := filepath.Split(exePath)
-
-	k := RegBase()
-	defer k.Close()
-	if _, _, err := k.GetStringValue(fn); err == nil {
-		return true
+	cmd := exec.Command("schtasks", "/query", "/tn", config.Name)
+	out, err := cmd.Output()
+	if err != nil {
+		k := RegBase()
+		defer k.Close()
+		if _, _, err := k.GetStringValue(config.Name); err == nil {
+			return true
+		}
 	}
 
-	return false
+	return strings.Contains(string(out), config.Name)
+}
+
+func taskXml(exePath string) string {
+	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT3S</Delay>
+    </LogonTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>Parallel</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>false</AllowHardTerminate>
+    <StartWhenAvailable>false</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>3</Priority>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>"%s"</Command>
+    </Exec>
+  </Actions>
+</Task>
+`, exePath+" -autostart")
+}
+
+func addSchtasks() bool {
+	exePath, _ := os.Executable()
+	xmlFile := filepath.Join(os.TempDir(), config.Name+".xml")
+	os.WriteFile(xmlFile, []byte(taskXml(exePath)), 0644)
+
+	cmd := exec.Command("schtasks", "/create", "/tn", config.Name, "/xml", xmlFile, "/f")
+	err := cmd.Run()
+
+	return err == nil
+}
+
+func deleteSchtasks() bool {
+	cmd := exec.Command("schtasks", "/delete", "/tn", config.Name, "/f")
+	err := cmd.Run()
+	return err == nil
 }
