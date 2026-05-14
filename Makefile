@@ -1,5 +1,7 @@
+version = $(shell git describe --tags --always)
+
 app_name = autoTyper
-app_version = 2.0.4
+app_version = $(subst v,,$(version))
 app_id = com.tw.autoTyper
 
 
