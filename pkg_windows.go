@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gavintan/autoTyper/config"
 	"golang.design/x/hotkey"
 	"golang.org/x/sys/windows/registry"
 )
@@ -128,33 +127,37 @@ func RegBase() registry.Key {
 
 func AutoStart(b bool) {
 	exePath, _ := os.Executable()
+	_, fn := filepath.Split(exePath)
 
 	k := RegBase()
 	defer k.Close()
 
 	if b {
 		if !addSchtasks() {
-			k.SetStringValue(config.Name, fmt.Sprintf("%s -autostart", exePath))
+			k.SetStringValue(fn, fmt.Sprintf("%s -autostart", exePath))
 		}
 	} else {
 		if !deleteSchtasks() {
-			k.DeleteValue(config.Name)
+			k.DeleteValue(fn)
 		}
 	}
 }
 
 func GetAutoStartStatus() bool {
-	cmd := exec.Command("schtasks", "/query", "/tn", config.Name)
+	exePath, _ := os.Executable()
+	_, fn := filepath.Split(exePath)
+
+	cmd := exec.Command("schtasks", "/query", "/tn", fn)
 	out, err := cmd.Output()
 	if err != nil {
 		k := RegBase()
 		defer k.Close()
-		if _, _, err := k.GetStringValue(config.Name); err == nil {
+		if _, _, err := k.GetStringValue(fn); err == nil {
 			return true
 		}
 	}
 
-	return strings.Contains(string(out), config.Name)
+	return strings.Contains(string(out), fn)
 }
 
 func taskXml(exePath string) string {
@@ -193,26 +196,32 @@ func taskXml(exePath string) string {
   </Settings>
   <Actions Context="Author">
     <Exec>
-      <Command>"%s"</Command>
+      <Command>%s</Command>
+	  <Arguments>-autostart</Arguments>
     </Exec>
   </Actions>
 </Task>
-`, exePath+" -autostart")
+`, exePath)
 }
 
 func addSchtasks() bool {
 	exePath, _ := os.Executable()
-	xmlFile := filepath.Join(os.TempDir(), config.Name+".xml")
+	_, fn := filepath.Split(exePath)
+
+	xmlFile := filepath.Join(os.TempDir(), fn+".xml")
 	os.WriteFile(xmlFile, []byte(taskXml(exePath)), 0644)
 
-	cmd := exec.Command("schtasks", "/create", "/tn", config.Name, "/xml", xmlFile, "/f")
+	cmd := exec.Command("schtasks", "/create", "/tn", fn, "/xml", xmlFile, "/f")
 	err := cmd.Run()
 
 	return err == nil
 }
 
 func deleteSchtasks() bool {
-	cmd := exec.Command("schtasks", "/delete", "/tn", config.Name, "/f")
+	exePath, _ := os.Executable()
+	_, fn := filepath.Split(exePath)
+
+	cmd := exec.Command("schtasks", "/delete", "/tn", fn, "/f")
 	err := cmd.Run()
 	return err == nil
 }
